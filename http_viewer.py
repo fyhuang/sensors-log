@@ -12,37 +12,44 @@ from logdata import *
 
 bottle.debug(True)
 
-TIME_FMT='%Y-%m-%d %H:%M:%S'
+
+@route('/averages')
+def averages():
+    # Graph daily averages
 
 @route('/graph')
 def graph():
     print("Graphing")
+
     multirows = []
     with log_lock:
         conn = data.connect()
         with closing(conn), closing(conn.cursor()) as c:
-            c.execute('SELECT * FROM LogValues WHERE cf_id=1')
-            multirows.append(c.fetchall())
-            c.execute('SELECT * FROM LogValues WHERE cf_id=2')
-            multirows.append(c.fetchall())
-            c.execute('SELECT * FROM LogValues WHERE cf_id=3')
-            multirows.append(c.fetchall())
-            c.execute('SELECT * FROM LogTimes')
+            one_day_ago = datetime.datetime.now() - datetime.timedelta(1)
+
+            c.execute('SELECT * FROM LogTimes WHERE timestamp > datetime(?)',
+                    (one_day_ago.strftime(TIME_FMT),))
             time_rows = c.fetchall()
 
-    iso_times = (x[1].split('.')[0] for x in time_rows)
+            cfids = request.query.cfids.split(',')
+            for i in cfids:
+                c.execute("SELECT lv.* FROM LogValues lv JOIN LogTimes lt ON lv.time_id = lt.time_id WHERE lv.cf_id=? AND lt.timestamp > datetime(?)",
+                        (i, one_day_ago.strftime(TIME_FMT)))
+                multirows.append(c.fetchall())
+
+    iso_times = (x[1] for x in time_rows)
     dts = [datetime.datetime.strptime(x, TIME_FMT) for x in iso_times]
     time_vals = matplotlib.dates.date2num(dts)
 
-    cf1_vals = [x[3] for x in multirows[0]]
-    cf2_vals = [x[3] for x in multirows[1]]
-    cf3_vals = [x[3] for x in multirows[2]]
+    cf_vals = []
+    for row in multirows:
+        cf_vals.append([x[3] for x in row])
 
+    graph_styles = ['r-', 'g-', 'b-']
     plt.close('all')
     fig, ax = plt.subplots(1)
-    ax.plot(dts, cf1_vals, 'r-', \
-            dts, cf2_vals, 'g-', \
-            dts, cf3_vals, 'b-')
+    for (i,row) in enumerate(cf_vals):
+        ax.plot(dts, row, graph_styles[i % len(graph_styles)])
     fig.autofmt_xdate()
 
     sio = StringIO.StringIO()
@@ -53,7 +60,7 @@ def graph():
 
 @route('/')
 def index():
-    return '<img src="{}/graph" />'.format(request['SCRIPT_NAME'])
+    return '<img src="{}/graph?cfids=1,2,3" />'.format(request['SCRIPT_NAME'])
 
 class MyFlupFCGIServer(bottle.ServerAdapter):
     def run(self, handler): # pragma: no cover

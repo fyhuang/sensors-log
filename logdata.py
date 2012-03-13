@@ -2,6 +2,8 @@ import threading
 import sqlite3
 from contextlib import closing
 
+TIME_FMT='%Y-%m-%d %H:%M:%S'
+
 features_to_log = {
         'coretemp-isa': ['Core '],
         'w83627thf': ['temp1'],
@@ -19,7 +21,7 @@ class LogData(object):
     def add_time(self, dt):
         conn = self.connect()
         with closing(conn.cursor()) as c:
-            c.execute('INSERT INTO LogTimes VALUES(NULL, ?)', (str(dt),))
+            c.execute('INSERT INTO LogTimes VALUES(NULL, ?)', (dt.strftime(TIME_FMT),))
             time_id = c.lastrowid
         conn.commit()
         conn.close()
