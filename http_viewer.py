@@ -15,7 +15,28 @@ bottle.debug(True)
 
 @route('/averages')
 def averages():
-    # Graph daily averages
+    # Graph daily averages, by hour
+    hours = [format(x, '02') for x in range(0,24)]
+    
+    averages = []
+    with log_lock:
+        conn = data.connect()
+        with closing(conn), closing(conn.cursor()) as c:
+            for h in hours:
+                c.execute('SELECT * FROM LogValues WHERE cf_id=1 AND time_id IN (SELECT time_id FROM LogTimes WHERE strftime("%H", timestamp) = ?)', (h,))
+                values = [row[3] for row in c.fetchall()]
+                averages.append(float(sum(values)) / len(values))
+
+    plt.close('all')
+    fig, ax = plt.subplots(1)
+    ax.plot(hours, averages, 'r-')
+    #fig.autofmt_xdate()
+
+    sio = StringIO.StringIO()
+    plt.savefig(sio, format='png')
+    sio.seek(0)
+    response.content_type = "image/png"
+    return sio
 
 @route('/graph')
 def graph():
